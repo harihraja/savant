@@ -42,7 +42,7 @@ COLLECTION_MUSIC = { 'title' : 'Savant Music', 'viewCountMin' : '1000000', 'view
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'views' }
 COLLECTION_TRAILERS = { 'title' : 'Savant Trailers', 'viewCountMin' : '100000', 'viewDaysMax' : '90', 'topics' : '', 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
-COLLECTION_NEWS = { 'title' : 'Savant News', 'viewCountMin' : '1000000', 'viewDaysMax' : '7', 'topics' : TOPICS_NEWS, 
+COLLECTION_NEWS = { 'title' : 'Savant News', 'viewCountMin' : '1000000', 'viewDaysMax' : '3', 'topics' : TOPICS_NEWS, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
   
 
@@ -218,6 +218,7 @@ def makecollections():
     from operator import itemgetter
     sorted_videos = sorted(videos, key=itemgetter('published_at'), reverse=True) if collection["order"] == "time" else videos
 
+    collection["playlistItems"] = []
     for video in sorted_videos:
       playlistitem_resource = {}
       playlistitem_resource["snippet"] = {}
@@ -500,14 +501,16 @@ def channel_topics_list(client, channelId):
 
 def mycollections(client, jsonify=True):
 
-  collections = [COLLECTION_TALK_SHOW, COLLECTION_SPORTS, COLLECTION_MUSIC] 
+  collections = [COLLECTION_TALK_SHOW, COLLECTION_SPORTS, COLLECTION_MUSIC, COLLECTION_NEWS] 
+  for c in collections:
+    c["channels"] = [] 
 
   # get subscriptions info
   subscriptions_list_response = subscriptions_list(client, False,
     part='snippet',
     mine=True, maxResults=50)
   items = subscriptions_list_response["items"]
-
+  
   # cycle through channel info 
   for item in items:
     channel = {}
