@@ -28,19 +28,22 @@ app = flask.Flask(__name__)
 app.secret_key = '\xb8S;\xbe;U,\x0c\xfd@E\xa0gK&\x07\x9cq\x05\x109\xf6p\x0b'
 
 # topics for each collection category
-TOPICS_TALK_SHOW = ['https://en.wikipedia.org/wiki/Entertainment', 'https://en.wikipedia.org/wiki/Telivision_program']
+TOPICS_TALK_SHOW = ['https://en.wikipedia.org/wiki/Entertainment', 'https://en.wikipedia.org/wiki/Television_program']
 TOPICS_SPORTS = ['https://en.wikipedia.org/wiki/Sport']
 TOPICS_MUSIC = ['https://en.wikipedia.org/wiki/Music']
-TOPICS_TRAILERS = ['https://en.wikipedia.org/wiki/Trailer_(promotion)', 'https://en.wikipedia.org/wiki/Teaser_campaign']
+TOPICS_NEWS = ['https://en.wikipedia.org/wiki/Society', 'https://en.wikipedia.org/wiki/Politics']
+
 
 COLLECTION_TALK_SHOW = { 'title' : 'Savant Talk Show', 'viewCountMin' : '1000000', 'viewDaysMax' : '7', 'topics' : TOPICS_TALK_SHOW, 
-  'channels' : [], 'playlistId' : '', 'playlistItems' : [] }
+  'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
 COLLECTION_SPORTS = { 'title' : 'Savant Sports', 'viewCountMin' : '100000', 'viewDaysMax' : '7', 'topics' : TOPICS_SPORTS, 
-  'channels' : [], 'playlistId' : '', 'playlistItems' : [] }
+  'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
 COLLECTION_MUSIC = { 'title' : 'Savant Music', 'viewCountMin' : '1000000', 'viewDaysMax' : '90', 'topics' : TOPICS_MUSIC, 
-  'channels' : [], 'playlistId' : '', 'playlistItems' : [] }
-COLLECTION_TRAILERS = { 'title' : 'Savant Trailers', 'viewCountMin' : '100000', 'viewDaysMax' : '90', 'topics' : TOPICS_TRAILERS, 
-  'channels' : [], 'playlistId' : '', 'playlistItems' : [] }
+  'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'views' }
+COLLECTION_TRAILERS = { 'title' : 'Savant Trailers', 'viewCountMin' : '100000', 'viewDaysMax' : '90', 'topics' : '', 
+  'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
+COLLECTION_NEWS = { 'title' : 'Savant News', 'viewCountMin' : '1000000', 'viewDaysMax' : '7', 'topics' : TOPICS_NEWS, 
+  'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
   
 
 @app.route('/myvideos')
@@ -140,6 +143,37 @@ def mychannels():
     part='snippet,contentDetails,statistics,topicDetails,status',
     mine=True, maxResults=50)
 
+@app.route('/allchannels')
+def allchannels():
+  if 'credentials' not in flask.session:
+    return flask.redirect('authorize')
+
+  # Load the credentials from the session.
+  credentials = google.oauth2.credentials.Credentials(
+      **flask.session['credentials'])
+
+  client = googleapiclient.discovery.build(
+      API_SERVICE_NAME, API_VERSION, credentials=credentials)
+  
+  # get subscriptions info
+  subscriptions_list_response = subscriptions_list(client, False,
+    part='snippet',
+    mine=True, maxResults=50)
+  items = subscriptions_list_response["items"]
+
+  channels = []
+  # cycle through channel info 
+  for item in items:
+    channels.append(channels_list(client, False,
+      part='snippet,contentDetails,statistics,topicDetails,status',
+      id=item["snippet"]["resourceId"]["channelId"], maxResults=50))
+
+  channels.append(channels_list(client, False,
+    part='snippet,contentDetails,statistics,topicDetails,status',
+    mine=True, maxResults=50))
+
+  return flask.jsonify(channels=channels)  
+
 @app.route('/mysubscriptions')
 def mysubscriptions():
   if 'credentials' not in flask.session:
@@ -169,28 +203,36 @@ def makecollections():
   client = googleapiclient.discovery.build(
       API_SERVICE_NAME, API_VERSION, credentials=credentials)
   
-  collections = topcollections(client, False)
+  collections = mycollections(client, False)
   for collection in collections:
     # ensure playlist is available
     playlist = myplaylist(client, collection["title"], True)
     collection["playlistId"] = playlist["id"]
 
+    videos = []
     for channel in collection["channels"]:
       for video in channel["videos"]:
-        playlistitem_resource = {}
-        playlistitem_resource["snippet"] = {}
-        playlistitem_resource["snippet"]["playlistId"] = collection["playlistId"]
-        playlistitem_resource["snippet"]["resourceId"] = {}
-        playlistitem_resource["snippet"]["resourceId"]["kind"] = 'youtube#video'
-        playlistitem_resource["snippet"]["resourceId"]["videoId"] = video["video_id"]
+        videos.append(video)
 
-        playlist_item = playlist_items_insert(client, playlistitem_resource, False, part="snippet")
-        playlistitem_resource["id"] = playlist_item["id"]
-        playlistitem_resource["snippet"]["channelId"] = playlist_item["snippet"]["channelId"]
-        playlistitem_resource["snippet"]["publishedAt"] = playlist_item["snippet"]["publishedAt"]
-        playlistitem_resource["snippet"]["title"] = playlist_item["snippet"]["title"]
-        
-        collection["playlistItems"].append(playlistitem_resource)
+    # order_key = 'published_at' if collection["order"] == "time" else 'view_count'
+    from operator import itemgetter
+    sorted_videos = sorted(videos, key=itemgetter('published_at'), reverse=True) if collection["order"] == "time" else videos
+
+    for video in sorted_videos:
+      playlistitem_resource = {}
+      playlistitem_resource["snippet"] = {}
+      playlistitem_resource["snippet"]["playlistId"] = collection["playlistId"]
+      playlistitem_resource["snippet"]["resourceId"] = {}
+      playlistitem_resource["snippet"]["resourceId"]["kind"] = 'youtube#video'
+      playlistitem_resource["snippet"]["resourceId"]["videoId"] = video["video_id"]
+
+      playlist_item = playlist_items_insert(client, playlistitem_resource, False, part="snippet")
+      playlistitem_resource["id"] = playlist_item["id"]
+      playlistitem_resource["snippet"]["channelId"] = playlist_item["snippet"]["channelId"]
+      playlistitem_resource["snippet"]["publishedAt"] = playlist_item["snippet"]["publishedAt"]
+      playlistitem_resource["snippet"]["title"] = playlist_item["snippet"]["title"]
+      
+      collection["playlistItems"].append(playlistitem_resource)
 
 
   return flask.jsonify(collections=collections)
@@ -208,7 +250,7 @@ def index():
   client = googleapiclient.discovery.build(
       API_SERVICE_NAME, API_VERSION, credentials=credentials)
   
-  return topcollections(client)
+  return mycollections(client)
 
 @app.route('/login')
 def login():
@@ -344,17 +386,33 @@ def query_videos_list(client, jsonify=True, viewCountMin=10000, viewDaysMax=10, 
   videos_list_response = videos_list(client, False, **kwargs)
   v_items = videos_list_response["items"]
 
+  view_counts  =[v["statistics"]["viewCount"] for v in v_items]
+  top_items = len(view_counts)/10 # Top 10%
+  # already sorted by views
+  # sorted_view_counts = sorted(view_counts, reverse=True) if False else view_counts 
+  view_count_limit = int(view_counts[top_items]) if any(view_counts) else int(viewCountMin)
+
   videos_items = []
   for v_item in v_items:
-    view_count = v_item["statistics"]["viewCount"]
-    if int(view_count) < int(viewCountMin):
-      continue
-
     published_time = dateutil.parser.parse(v_item["snippet"]["publishedAt"])
-    allowed_time = datetime.now() - timedelta(days=int(viewDaysMax))
-    if published_time.replace(tzinfo=None) < allowed_time:
-      continue
+    # already queried for date limit
+    # allowed_time = datetime.utcnow() - timedelta(days=int(viewDaysMax))
+    # if published_time.replace(tzinfo=None) < allowed_time:
+    #   continue
     
+    view_count = v_item["statistics"]["viewCount"]
+    if int(view_count) < view_count_limit:
+      if int(view_count) < view_count_limit/2:
+        continue
+        
+      # check if view rate is good
+      td = datetime.utcnow() - published_time.replace(tzinfo=None)
+      view_days = float(td.total_seconds())/(24*60*60)
+      daily_view_rate = float(view_count)/view_days
+      view_rate_limit = float(view_count_limit)/int(viewDaysMax)
+      if (daily_view_rate < view_rate_limit):
+        continue
+
     videos_items.append(v_item)
 
   videos_list_response["items"] = videos_items
@@ -440,7 +498,7 @@ def channel_topics_list(client, channelId):
   return channel["topicDetails"]["topicCategories"] if channel else None
 
 
-def topcollections(client, jsonify=True):
+def mycollections(client, jsonify=True):
 
   collections = [COLLECTION_TALK_SHOW, COLLECTION_SPORTS, COLLECTION_MUSIC] 
 
@@ -459,8 +517,7 @@ def topcollections(client, jsonify=True):
     channel["topics"] = channel_topics_list(client, channel["channel_id"])
 
     # get the appropriate collection
-    # TODO: Check Subset  
-    collection = next((c for c in collections if not set(c["topics"]).isdisjoint(channel["topics"])), None) 
+    collection = next((c for c in collections if set(c["topics"]).issubset(set(channel["topics"]))), None) 
     if not collection:
       continue
 
