@@ -38,7 +38,7 @@ COLLECTION_TALK_SHOW = { 'title' : 'Savant Talk Show', 'viewCountMin' : '1000000
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
 COLLECTION_SPORTS = { 'title' : 'Savant Sports', 'viewCountMin' : '100000', 'viewDaysMax' : '7', 'topics' : TOPICS_SPORTS, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
-COLLECTION_MUSIC = { 'title' : 'Savant Music', 'viewCountMin' : '1000000', 'viewDaysMax' : '90', 'topics' : TOPICS_MUSIC, 
+COLLECTION_MUSIC = { 'title' : 'Savant Music', 'viewCountMin' : '1000000', 'viewDaysMax' : '180', 'topics' : TOPICS_MUSIC, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'views' }
 COLLECTION_TRAILERS = { 'title' : 'Savant Trailers', 'viewCountMin' : '100000', 'viewDaysMax' : '90', 'topics' : '', 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
@@ -388,7 +388,9 @@ def query_videos_list(client, jsonify=True, viewCountMin=10000, viewDaysMax=10, 
   v_items = videos_list_response["items"]
 
   view_counts  =[v["statistics"]["viewCount"] for v in v_items]
-  top_items = len(view_counts)/10 # Top 10%
+  percent_divisor = 10 if int(viewDaysMax) < 30 else 5
+
+  top_items = len(view_counts)/percent_divisor # Top 10% or 20%
   # already sorted by views
   # sorted_view_counts = sorted(view_counts, reverse=True) if False else view_counts 
   view_count_limit = int(view_counts[top_items]) if any(view_counts) else int(viewCountMin)
@@ -501,6 +503,7 @@ def channel_topics_list(client, channelId):
 
 def mycollections(client, jsonify=True):
 
+  # collections = [COLLECTION_MUSIC] 
   collections = [COLLECTION_TALK_SHOW, COLLECTION_SPORTS, COLLECTION_MUSIC, COLLECTION_NEWS] 
   for c in collections:
     c["channels"] = [] 
@@ -554,8 +557,12 @@ def mycollections(client, jsonify=True):
       video["published_at"] = v_item["snippet"]["publishedAt"]
       video["view_count"] = v_item["statistics"]["viewCount"]
 
-      # video["channel_title"] = item["snippet"]["channelTitle"] if "channelTitle" in item["snippet"] else ""
       video["channel_id"] = item["snippet"]["channelId"] if "channelId" in item["snippet"] else ""
+
+      if collection["topics"] == TOPICS_MUSIC:
+        ignore_list = ['Poster', 'First Look', 'Scene', 'Logo', 'Jukebox', 'Mashup', 'Theme']
+        if any(ignore in video["title"] for ignore in ignore_list): 
+          continue
       videos.append(video)
 
     channel["videos"] = videos
