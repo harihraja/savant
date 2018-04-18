@@ -576,5 +576,7 @@ def mycollections(client, jsonify=True):
 if __name__ == '__main__':
   # When running locally, disable OAuthlib's HTTPs verification. When
   # running in production *do not* leave this option enabled.
+  os.environ['FLASK_APP'] = 'savant_main.py'
+  os.environ['FLASK_DEBUG'] = '1'
   os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
   app.run('localhost', 8080, debug=True)
