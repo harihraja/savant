@@ -1,0 +1,12 @@
+runtime: python27
+api_version: 1
+threadsafe: true
+
+handlers:
+- url: /.*
+  script: savant_main.app
+
+env_variables:
+  GOOGLE_CLIENT_SECRETS: 'gcloud_client_credentials.json'
+  FLASK_APP: 'savant_main.py'
+  FLASK_DEBUG: '1'
