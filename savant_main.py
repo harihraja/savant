@@ -10,6 +10,11 @@ import google.oauth2.credentials
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 
+from requests_toolbelt.adapters import appengine
+appengine.monkeypatch()
+
+import logging
+
 # The CLIENT_SECRETS_FILE variable specifies the name of a file that contains
 # the OAuth 2.0 information for this application, including its client_id and
 # client_secret.
@@ -240,7 +245,7 @@ def makecollections():
 
 @app.route('/')
 def index():
-
+  logging.debug('index')
   if 'credentials' not in flask.session:
     return flask.redirect('authorize')
 
@@ -255,11 +260,13 @@ def index():
 
 @app.route('/login')
 def login():
+  logging.debug('login')
   return flask.redirect('authorize')
 
 
 @app.route('/authorize')
 def authorize():
+  logging.debug('authorize')
   # Create a flow instance to manage the OAuth 2.0 Authorization Grant Flow
   # steps.
   flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
@@ -276,21 +283,31 @@ def authorize():
   # the authorization server response.
   flask.session['state'] = state
 
+  logging.debug('redirecting to google oauth')
+
   return flask.redirect(authorization_url)
 
 
 @app.route('/oauth2callback')
 def oauth2callback():
+  logging.debug('oauth2callback')
   # Specify the state when creating the flow in the callback so that it can
   # verify the authorization server response.
   state = flask.session['state']
+  logging.debug('get state')
+  
   flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
       CLIENT_SECRETS_FILE, scopes=SCOPES, state=state)
   flow.redirect_uri = flask.url_for('oauth2callback', _external=True)
+  logging.debug('flow:: secrets file')
 
   # Use the authorization server's response to fetch the OAuth 2.0 tokens.
   authorization_response = flask.request.url
-  flow.fetch_token(authorization_response=authorization_response)
+  try:
+    flow.fetch_token(authorization_response=authorization_response)
+  except Exception:
+    logging.exception('fetch_token:')
+  logging.debug('token fetched')
 
   # Store the credentials in the session.
   # ACTION ITEM for developers:
@@ -305,6 +322,7 @@ def oauth2callback():
       'client_secret': credentials.client_secret,
       'scopes': credentials.scopes
   }
+  logging.debug('set session vars')
 
   return flask.redirect(flask.url_for('index'))
 
