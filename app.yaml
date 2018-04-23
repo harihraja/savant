@@ -7,7 +7,7 @@ handlers:
   script: savant_main.app
 
 env_variables:
-  GOOGLE_CLIENT_SECRETS: 'gcloud_client_credentials.json'
+  GOOGLE_CLIENT_SECRETS: 'client_credentials.json'
   FLASK_APP: 'savant_main.py'
   FLASK_DEBUG: '1'
   PYTHONHTTPSVERIFY: 1

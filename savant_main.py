@@ -596,6 +596,6 @@ if __name__ == '__main__':
   # running in production *do not* leave this option enabled.
   os.environ['FLASK_APP'] = 'savant_main.py'
   os.environ['FLASK_DEBUG'] = '1'
-  os.environ['GOOGLE_CLIENT_SECRETS'] = 'local_client_credentials.json'
+  os.environ['GOOGLE_CLIENT_SECRETS'] = 'client_credentials.json'
   os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
   app.run('localhost', 8080, debug=True)
