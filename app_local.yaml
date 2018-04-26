@@ -12,6 +12,7 @@ env_variables:
   FLASK_DEBUG: '1'
   PYTHONHTTPSVERIFY: 1
   OAUTHLIB_INSECURE_TRANSPORT: '1'
+  MONKEY_PATCH: 1
 
 libraries:
 - name: ssl
