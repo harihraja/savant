@@ -10,9 +10,13 @@ import google.oauth2.credentials
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 
-from requests_toolbelt.adapters import appengine
-appengine.monkeypatch()
+# Use Monkey Patch by Requests Toolbelt only if needed 
+if 'MONKEY_PATCH' in os.environ:
+  from requests_toolbelt.adapters import appengine
+  appengine.monkeypatch()
 
+import dateutil.parser
+from datetime import datetime, timedelta
 import logging
 
 # The CLIENT_SECRETS_FILE variable specifies the name of a file that contains
@@ -41,9 +45,9 @@ TOPICS_NEWS = ['https://en.wikipedia.org/wiki/Society', 'https://en.wikipedia.or
 
 COLLECTION_TALK_SHOW = { 'title' : 'Savant Talk Show', 'viewCountMin' : '1000000', 'viewDaysMax' : '7', 'topics' : TOPICS_TALK_SHOW, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
-COLLECTION_SPORTS = { 'title' : 'Savant Sports', 'viewCountMin' : '100000', 'viewDaysMax' : '7', 'topics' : TOPICS_SPORTS, 
+COLLECTION_SPORTS = { 'title' : 'Savant Sports', 'viewCountMin' : '100000', 'viewDaysMax' : '5', 'topics' : TOPICS_SPORTS, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
-COLLECTION_MUSIC = { 'title' : 'Savant Music', 'viewCountMin' : '1000000', 'viewDaysMax' : '180', 'topics' : TOPICS_MUSIC, 
+COLLECTION_MUSIC = { 'title' : 'Savant Music', 'viewCountMin' : '1000000', 'viewDaysMax' : '120', 'topics' : TOPICS_MUSIC, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'views' }
 COLLECTION_TRAILERS = { 'title' : 'Savant Trailers', 'viewCountMin' : '100000', 'viewDaysMax' : '90', 'topics' : '', 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
@@ -245,13 +249,18 @@ def makecollections():
 
 @app.route('/')
 def index():
-  logging.debug('index')
-  if 'credentials' not in flask.session:
+  if 'credentials' not in flask.session or 'token_details' not in flask.session:
     return flask.redirect('authorize')
+  
 
   # Load the credentials from the session.
   credentials = google.oauth2.credentials.Credentials(
       **flask.session['credentials'])
+
+  # Check to see if the token is expired
+  expiration_time = dateutil.parser.parse(flask.session['token_details']['expiration_time'])
+  if datetime.now() > expiration_time:
+    return flask.redirect('authorize')
 
   client = googleapiclient.discovery.build(
       API_SERVICE_NAME, API_VERSION, credentials=credentials)
@@ -260,13 +269,11 @@ def index():
 
 @app.route('/login')
 def login():
-  logging.debug('login')
   return flask.redirect('authorize')
 
 
 @app.route('/authorize')
 def authorize():
-  logging.debug('authorize')
   # Create a flow instance to manage the OAuth 2.0 Authorization Grant Flow
   # steps.
   flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
@@ -276,6 +283,7 @@ def authorize():
       # This parameter enables offline access which gives your application
       # both an access and refresh token.
       access_type='offline',
+      # prompt='consent',
       # This parameter enables incremental auth.
       include_granted_scopes='true')
 
@@ -284,7 +292,6 @@ def authorize():
   flask.session['state'] = state
 
   logging.debug('redirecting to google oauth')
-
   return flask.redirect(authorization_url)
 
 
@@ -294,26 +301,25 @@ def oauth2callback():
   # Specify the state when creating the flow in the callback so that it can
   # verify the authorization server response.
   state = flask.session['state']
-  logging.debug('get state')
   
   flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
       CLIENT_SECRETS_FILE, scopes=SCOPES, state=state)
   flow.redirect_uri = flask.url_for('oauth2callback', _external=True)
-  logging.debug('flow:: secrets file')
 
   # Use the authorization server's response to fetch the OAuth 2.0 tokens.
   authorization_response = flask.request.url
   try:
     flow.fetch_token(authorization_response=authorization_response)
   except Exception:
-    logging.exception('fetch_token:')
-  logging.debug('token fetched')
+    logging.exception('Exception occured during fetch_token.')
+  logging.debug('Token was fetched.')
 
   # Store the credentials in the session.
   # ACTION ITEM for developers:
   #     Store user's access and refresh tokens in your data store if
   #     incorporating this code into your real app.
   credentials = flow.credentials
+  
   flask.session['credentials'] = {
       'token': credentials.token,
       'refresh_token': credentials.refresh_token,
@@ -322,7 +328,11 @@ def oauth2callback():
       'client_secret': credentials.client_secret,
       'scopes': credentials.scopes
   }
-  logging.debug('set session vars')
+
+  # Store expiration time in session
+  flask.session['token_details'] = {
+      'expiration_time': credentials.expiry.isoformat()
+  }
 
   return flask.redirect(flask.url_for('index'))
 
@@ -399,16 +409,14 @@ def subscriptions_list(client, jsonify=True, **kwargs):
   return flask.jsonify(**response) if jsonify else response
 
 def query_videos_list(client, jsonify=True, viewCountMin=10000, viewDaysMax=10, **kwargs):
-  import dateutil.parser
-  from datetime import datetime, timedelta
 
   videos_list_response = videos_list(client, False, **kwargs)
   v_items = videos_list_response["items"]
 
   view_counts  =[v["statistics"]["viewCount"] for v in v_items]
-  percent_divisor = 10 if int(viewDaysMax) < 30 else 5
+  percent_divisor = 10 if int(viewDaysMax) < 30 else 3
 
-  top_items = len(view_counts)/percent_divisor # Top 10% or 20%
+  top_items = len(view_counts)/percent_divisor # Top 10% or 33%
   # already sorted by views
   # sorted_view_counts = sorted(view_counts, reverse=True) if False else view_counts 
   view_count_limit = int(view_counts[top_items]) if any(view_counts) else int(viewCountMin)
@@ -558,6 +566,9 @@ def mycollections(client, jsonify=True):
     for vi_item in vi_items:
       if "videoId" in vi_item["id"]:
         video_ids.append(vi_item["id"]["videoId"])
+
+    # remove duplicates
+    video_ids = list(set(video_ids))
 
     # remove videos with views lower than threshold
     query_videos_list_response = query_videos_list(client, False, 
