@@ -8,6 +8,7 @@ from flask import request
 
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
+import google_auth_oauthlib.helpers
 import googleapiclient.discovery
 
 # Use Monkey Patch by Requests Toolbelt only if needed 
@@ -19,6 +20,8 @@ import dateutil.parser
 from datetime import datetime, timedelta
 import logging
 
+import savant_models as models
+
 # The CLIENT_SECRETS_FILE variable specifies the name of a file that contains
 # the OAuth 2.0 information for this application, including its client_id and
 # client_secret.
@@ -26,7 +29,7 @@ CLIENT_SECRETS_FILE = os.environ['GOOGLE_CLIENT_SECRETS']
 
 # This OAuth 2.0 access scope allows for full read/write access to the
 # authenticated user's account and requires requests to use an SSL connection.
-SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
+SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl', 'https://www.googleapis.com/auth/userinfo.email']
 API_SERVICE_NAME = 'youtube'
 API_VERSION = 'v3'
 
@@ -53,36 +56,184 @@ COLLECTION_TRAILERS = { 'title' : 'Savant Trailers', 'viewCountMin' : '100000', 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
 COLLECTION_NEWS = { 'title' : 'Savant News', 'viewCountMin' : '1000000', 'viewDaysMax' : '3', 'topics' : TOPICS_NEWS, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
-  
 
-@app.route('/myvideos')
-def myvideos():
-  if 'credentials' not in flask.session:
-    return flask.redirect('authorize')
+
+def get_client():
+  # if 'credentials' not in flask.session or 'token_details' not in flask.session:
+  #   return None  
+
+  # Check to see if the token is expired
+  # expiration_time = dateutil.parser.parse(flask.session['token_details']['expiration_time'])
+  # if datetime.now() > expiration_time:
+  #   return None
+  
+  # Check to see if the token is expired
+  # if 'token_details' in flask.session:
+  #   expiration_time = dateutil.parser.parse(flask.session['token_details']['expiration_time'])
+  #   if datetime.now() > expiration_time:
+  #     refresh_url = 'https://www.googleapis.com/oauth2/v4/token'
+  #     try:
+  #       token = flow.oauth2session.refresh_token(refresh_url)
+  #     except Exception:
+  #       logging.exception('Exception occured during refresh_token.')
+  #     logging.debug('refresh_token was fetched.')
+
+  print "GET_CLIENT::"
+  if 'userinfo' not in flask.session:
+    return None    
+
+  user_info = flask.session['userinfo']
+  print "GET_CLIENT::USERINFO: ", user_info
+  
+  oauth_session, client_config = google_auth_oauthlib.helpers.session_from_client_secrets_file(
+      CLIENT_SECRETS_FILE, scopes=SCOPES)
+  if 'web' in client_config:
+      config = client_config['web']
+  elif 'installed' in client_config:
+      config = client_config['installed']
+  else:
+    return None              
+  print "GET_CLIENT::CONFIG: ", config
+      
+  token = models.get_token(user_info['id'])
+  print "GET_CLIENT::TOKEN: ", token  
+  oauth_session.token = token
+  
+  credentials = google_auth_oauthlib.helpers.credentials_from_session(
+            oauth_session, config)
+
+  creds = {
+      'token': credentials.token,
+      'refresh_token': credentials.refresh_token,
+      'token_uri': credentials.token_uri,
+      'client_id': credentials.client_id,
+      'client_secret': credentials.client_secret,
+      'scopes': credentials.scopes
+  }            
+  print "GET_CLIENT::CREDENTIALS: ", creds
 
   # Load the credentials from the session.
-  credentials = google.oauth2.credentials.Credentials(
-      **flask.session['credentials'])
+  # credentials = google.oauth2.credentials.Credentials(**flask.session['credentials'])
 
   client = googleapiclient.discovery.build(
       API_SERVICE_NAME, API_VERSION, credentials=credentials)
   
+  return client
+
+
+@app.route('/')
+def index():
+  client = get_client()
+  if not client:
+    return flask.redirect('authorize')  
+
+  return mycollections(client)
+
+@app.route('/login')
+def login():
+  return flask.redirect('authorize')
+
+
+@app.route('/authorize')
+def authorize():
+
+  # Create a flow instance to manage the OAuth 2.0 Authorization Grant Flow
+  # steps.
+  flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
+      CLIENT_SECRETS_FILE, scopes=SCOPES)
+
+  flow.redirect_uri = flask.url_for('oauth2callback', _external=True)
+  authorization_url, state = flow.authorization_url(
+      # This parameter enables offline access which gives your application
+      # both an access and refresh token.
+      access_type='offline',
+      prompt='consent',
+      # This parameter enables incremental auth.
+      include_granted_scopes='true')
+
+  # Store the state in the session so that the callback can verify that
+  # the authorization server response.
+  flask.session['state'] = state
+
+  logging.debug('redirecting to google oauth')
+  return flask.redirect(authorization_url)
+
+
+@app.route('/oauth2callback')
+def oauth2callback():
+  logging.debug('oauth2callback')
+  print "OAUTH2CALLBACK::"
+  
+  # Specify the state when creating the flow in the callback so that it can
+  # verify the authorization server response.
+  state = flask.session['state']
+  
+  flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
+      CLIENT_SECRETS_FILE, scopes=SCOPES, state=state)
+  flow.redirect_uri = flask.url_for('oauth2callback', _external=True)
+
+  # Use the authorization server's response to fetch the OAuth 2.0 tokens.
+  authorization_response = flask.request.url
+  try:
+    token = flow.fetch_token(authorization_response=authorization_response)
+  except Exception:
+    logging.exception('Exception occured during fetch_token.')
+  logging.debug('Token was fetched.')
+  print "OAUTH2CALLBACK::TOKEN: ", token
+
+  # Store the credentials in the session.
+  # ACTION ITEM for developers:
+  #     Store user's access and refresh tokens in your data store if
+  #     incorporating this code into your real app.
+  credentials = flow.credentials
+  
+  # flask.session['credentials'] = {
+  #     'token': credentials.token,
+  #     'refresh_token': credentials.refresh_token,
+  #     'token_uri': credentials.token_uri,
+  #     'client_id': credentials.client_id,
+  #     'client_secret': credentials.client_secret,
+  #     'scopes': credentials.scopes
+  # }
+
+  # acquire user info
+  try:
+    user_info = flow.authorized_session().get('https://www.googleapis.com/oauth2/v2/userinfo').json()
+  except Exception:
+    logging.exception('Exception occured during userinfo.')
+  logging.debug('userinfo was fetched.')
+  flask.session['userinfo'] = user_info
+  print "OAUTH2CALLBACK::USERINFO: ", user_info
+
+  # store refresh token & token uri
+  models.store_token(user_info['id'], token)
+
+  # Store expiration time in session
+  flask.session['token_details'] = {
+      'expiration_time': credentials.expiry.isoformat()
+  }
+
+  return flask.redirect(flask.url_for('index'))
+
+
+@app.route('/myvideos')
+def myvideos():
+
+  client = get_client()
+  if not client:
+    return flask.redirect('authorize')  
+
   return search_list(client,
     part='snippet', type='video',
     forMine=True, maxResults=50)
 
 @app.route('/myplaylists')
 def myplaylists():
-  if 'credentials' not in flask.session:
-    return flask.redirect('authorize')
 
-  # Load the credentials from the session.
-  credentials = google.oauth2.credentials.Credentials(
-      **flask.session['credentials'])
+  client = get_client()
+  if not client:
+    return flask.redirect('authorize')  
 
-  client = googleapiclient.discovery.build(
-      API_SERVICE_NAME, API_VERSION, credentials=credentials)
-  
   return playlists_list(client,
     part='snippet,contentDetails',
     mine=True, maxResults=50)
@@ -94,15 +245,9 @@ def playlistvideos():
   viewCountMin = request.args.get('viewcountmin') if 'viewcountmin' in request.args else '10000'
   viewDaysMax = request.args.get('viewdaysmax') if 'viewdaysmax' in request.args else '10'
 
-  if 'credentials' not in flask.session:
-    return flask.redirect('authorize')
-
-  # Load the credentials from the session.
-  credentials = google.oauth2.credentials.Credentials(
-      **flask.session['credentials'])
-
-  client = googleapiclient.discovery.build(
-      API_SERVICE_NAME, API_VERSION, credentials=credentials)
+  client = get_client()
+  if not client:
+    return flask.redirect('authorize')  
 
   videos_ids  = []
   playlistitems_list_response = playlistitems_list(client, False,
@@ -122,15 +267,9 @@ def playlistitems():
 
   playlist_id = request.args.get('playlistid')
 
-  if 'credentials' not in flask.session:
-    return flask.redirect('authorize')
-
-  # Load the credentials from the session.
-  credentials = google.oauth2.credentials.Credentials(
-      **flask.session['credentials'])
-
-  client = googleapiclient.discovery.build(
-      API_SERVICE_NAME, API_VERSION, credentials=credentials)
+  client = get_client()
+  if not client:
+    return flask.redirect('authorize')  
 
   return playlistitems_list(client,
     part='snippet,contentDetails',
@@ -138,32 +277,22 @@ def playlistitems():
 
 @app.route('/mychannels')
 def mychannels():
-  if 'credentials' not in flask.session:
-    return flask.redirect('authorize')
 
-  # Load the credentials from the session.
-  credentials = google.oauth2.credentials.Credentials(
-      **flask.session['credentials'])
+  client = get_client()
+  if not client:
+    return flask.redirect('authorize')  
 
-  client = googleapiclient.discovery.build(
-      API_SERVICE_NAME, API_VERSION, credentials=credentials)
-  
   return channels_list(client,
     part='snippet,contentDetails,statistics,topicDetails,status',
     mine=True, maxResults=50)
 
 @app.route('/allchannels')
 def allchannels():
-  if 'credentials' not in flask.session:
-    return flask.redirect('authorize')
 
-  # Load the credentials from the session.
-  credentials = google.oauth2.credentials.Credentials(
-      **flask.session['credentials'])
+  client = get_client()
+  if not client:
+    return flask.redirect('authorize')  
 
-  client = googleapiclient.discovery.build(
-      API_SERVICE_NAME, API_VERSION, credentials=credentials)
-  
   # get subscriptions info
   subscriptions_list_response = subscriptions_list(client, False,
     part='snippet',
@@ -185,16 +314,11 @@ def allchannels():
 
 @app.route('/mysubscriptions')
 def mysubscriptions():
-  if 'credentials' not in flask.session:
-    return flask.redirect('authorize')
 
-  # Load the credentials from the session.
-  credentials = google.oauth2.credentials.Credentials(
-      **flask.session['credentials'])
+  client = get_client()
+  if not client:
+    return flask.redirect('authorize')  
 
-  client = googleapiclient.discovery.build(
-      API_SERVICE_NAME, API_VERSION, credentials=credentials)
-  
   return subscriptions_list(client,
     part='snippet,contentDetails',
     mine=True, maxResults=50)
@@ -202,16 +326,10 @@ def mysubscriptions():
 @app.route('/makecollections')
 def makecollections():
 
-  if 'credentials' not in flask.session:
-    return flask.redirect('authorize')
+  client = get_client()
+  if not client:
+    return flask.redirect('authorize')  
 
-  # Load the credentials from the session.
-  credentials = google.oauth2.credentials.Credentials(
-      **flask.session['credentials'])
-
-  client = googleapiclient.discovery.build(
-      API_SERVICE_NAME, API_VERSION, credentials=credentials)
-  
   collections = mycollections(client, False)
   for collection in collections:
     # ensure playlist is available
@@ -247,94 +365,6 @@ def makecollections():
 
   return flask.jsonify(collections=collections)
 
-@app.route('/')
-def index():
-  if 'credentials' not in flask.session or 'token_details' not in flask.session:
-    return flask.redirect('authorize')
-  
-
-  # Load the credentials from the session.
-  credentials = google.oauth2.credentials.Credentials(
-      **flask.session['credentials'])
-
-  # Check to see if the token is expired
-  expiration_time = dateutil.parser.parse(flask.session['token_details']['expiration_time'])
-  if datetime.now() > expiration_time:
-    return flask.redirect('authorize')
-
-  client = googleapiclient.discovery.build(
-      API_SERVICE_NAME, API_VERSION, credentials=credentials)
-  
-  return mycollections(client)
-
-@app.route('/login')
-def login():
-  return flask.redirect('authorize')
-
-
-@app.route('/authorize')
-def authorize():
-  # Create a flow instance to manage the OAuth 2.0 Authorization Grant Flow
-  # steps.
-  flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
-      CLIENT_SECRETS_FILE, scopes=SCOPES)
-  flow.redirect_uri = flask.url_for('oauth2callback', _external=True)
-  authorization_url, state = flow.authorization_url(
-      # This parameter enables offline access which gives your application
-      # both an access and refresh token.
-      access_type='offline',
-      # prompt='consent',
-      # This parameter enables incremental auth.
-      include_granted_scopes='true')
-
-  # Store the state in the session so that the callback can verify that
-  # the authorization server response.
-  flask.session['state'] = state
-
-  logging.debug('redirecting to google oauth')
-  return flask.redirect(authorization_url)
-
-
-@app.route('/oauth2callback')
-def oauth2callback():
-  logging.debug('oauth2callback')
-  # Specify the state when creating the flow in the callback so that it can
-  # verify the authorization server response.
-  state = flask.session['state']
-  
-  flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
-      CLIENT_SECRETS_FILE, scopes=SCOPES, state=state)
-  flow.redirect_uri = flask.url_for('oauth2callback', _external=True)
-
-  # Use the authorization server's response to fetch the OAuth 2.0 tokens.
-  authorization_response = flask.request.url
-  try:
-    flow.fetch_token(authorization_response=authorization_response)
-  except Exception:
-    logging.exception('Exception occured during fetch_token.')
-  logging.debug('Token was fetched.')
-
-  # Store the credentials in the session.
-  # ACTION ITEM for developers:
-  #     Store user's access and refresh tokens in your data store if
-  #     incorporating this code into your real app.
-  credentials = flow.credentials
-  
-  flask.session['credentials'] = {
-      'token': credentials.token,
-      'refresh_token': credentials.refresh_token,
-      'token_uri': credentials.token_uri,
-      'client_id': credentials.client_id,
-      'client_secret': credentials.client_secret,
-      'scopes': credentials.scopes
-  }
-
-  # Store expiration time in session
-  flask.session['token_details'] = {
-      'expiration_time': credentials.expiry.isoformat()
-  }
-
-  return flask.redirect(flask.url_for('index'))
 
 def search_list(client, jsonify=True, **kwargs):
   response = client.search().list(
@@ -547,6 +577,8 @@ def mycollections(client, jsonify=True):
     channel["channel_id"] = item["snippet"]["resourceId"]["channelId"]
     # channel["published_at"] = item["snippet"]["publishedAt"]
     channel["topics"] = channel_topics_list(client, channel["channel_id"])
+    if not channel["topics"]:
+      continue
 
     # get the appropriate collection
     collection = next((c for c in collections if set(c["topics"]).issubset(set(channel["topics"]))), None) 
