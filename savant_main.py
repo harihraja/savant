@@ -61,7 +61,7 @@ COLLECTION_NEWS = { 'title' : 'Savant News', 'viewCountMin' : '1000000', 'viewDa
 def get_client(userid=None):
 
   # print "GET_CLIENT::"
-  if not userid or 'userinfo' not in flask.session or 'id' not in flask.session['userinfo']:
+  if not userid and 'userinfo' not in flask.session:
     return None    
 
   user_id = userid or flask.session['userinfo']['id']
@@ -109,7 +109,7 @@ def get_client(userid=None):
 @app.route('/')
 def index():
 
-  client = get_client(user_id)
+  client = get_client()
   if not client:
     return flask.redirect('authorize')  
 
@@ -328,11 +328,11 @@ def makecollections():
         playlistitem_resource["snippet"]["resourceId"]["kind"] = 'youtube#video'
         playlistitem_resource["snippet"]["resourceId"]["videoId"] = video["video_id"]
 
-        # playlist_item = playlist_items_insert(client, playlistitem_resource, False, part="snippet")
-        # playlistitem_resource["id"] = playlist_item["id"]
-        # playlistitem_resource["snippet"]["channelId"] = playlist_item["snippet"]["channelId"]
-        # playlistitem_resource["snippet"]["publishedAt"] = playlist_item["snippet"]["publishedAt"]
-        # playlistitem_resource["snippet"]["title"] = playlist_item["snippet"]["title"]
+        playlist_item = playlist_items_insert(client, playlistitem_resource, False, part="snippet")
+        playlistitem_resource["id"] = playlist_item["id"]
+        playlistitem_resource["snippet"]["channelId"] = playlist_item["snippet"]["channelId"]
+        playlistitem_resource["snippet"]["publishedAt"] = playlist_item["snippet"]["publishedAt"]
+        playlistitem_resource["snippet"]["title"] = playlist_item["snippet"]["title"]
         
         collection["playlistItems"].append(playlistitem_resource)
 
