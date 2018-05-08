@@ -6,6 +6,16 @@ class UserAccountInfo(ndb.Model):
     user_id = ndb.StringProperty(required=True)
     user_token = ndb.JsonProperty(compressed=False)
 
+def get_user_ids():
+
+    user_ids = []    
+    accounts = UserAccountInfo.query().fetch()
+    for account in accounts:
+        user_ids.append(account.user_id)
+
+    return user_ids
+
+
 def store_token(id, token):
     # do not store or update to empty if or refresh token
     if not id or not token:

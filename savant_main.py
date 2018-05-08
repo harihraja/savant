@@ -58,13 +58,13 @@ COLLECTION_NEWS = { 'title' : 'Savant News', 'viewCountMin' : '1000000', 'viewDa
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
 
 
-def get_client():
+def get_client(userid=None):
 
   # print "GET_CLIENT::"
-  if 'userinfo' not in flask.session:
+  if not userid or 'userinfo' not in flask.session or 'id' not in flask.session['userinfo']:
     return None    
 
-  user_info = flask.session['userinfo']
+  user_id = userid or flask.session['userinfo']['id']
   # print "GET_CLIENT::USERINFO: ", user_info
   
   oauth_session, client_config = google_auth_oauthlib.helpers.session_from_client_secrets_file(
@@ -76,7 +76,7 @@ def get_client():
   else:
     return None              
       
-  token = models.get_token(user_info['id'])
+  token = models.get_token(user_id)
   # print "GET_CLIENT::TOKEN:DB ", token  
   oauth_session.token = token
 
@@ -94,7 +94,7 @@ def get_client():
       logging.exception('Exception occured during refresh_token.')
       return None
     logging.debug('refresh_token was fetched.')
-    print "GET_CLIENT::TOKEN:REFRESH ", token  
+    # print "GET_CLIENT::TOKEN:REFRESH ", token  
 
 
   credentials = google_auth_oauthlib.helpers.credentials_from_session(
@@ -108,7 +108,8 @@ def get_client():
 
 @app.route('/')
 def index():
-  client = get_client()
+
+  client = get_client(user_id)
   if not client:
     return flask.redirect('authorize')  
 
@@ -291,44 +292,55 @@ def mysubscriptions():
 @app.route('/makecollections')
 def makecollections():
 
-  client = get_client()
-  if not client:
-    return flask.redirect('authorize')  
+  users_collections = []
+  user_ids = models.get_user_ids()
+  print "MAKECOLLECTIONS::USER_IDS:", user_ids
+  for user_id in user_ids:
+    user_collections = {}
+    user_collections['userId'] = user_id
 
-  collections = mycollections(client, False)
-  for collection in collections:
-    # ensure playlist is available
-    playlist = myplaylist(client, collection["title"], True)
-    collection["playlistId"] = playlist["id"]
+    client = get_client(user_id)
+    if not client:
+      users_collections.append(user_collections)
+      continue  
 
-    videos = []
-    for channel in collection["channels"]:
-      for video in channel["videos"]:
-        videos.append(video)
+    collections = mycollections(client, False)
+    for collection in collections:
+      # ensure playlist is available
+      playlist = myplaylist(client, collection["title"], True)
+      collection["playlistId"] = playlist["id"]
 
-    # order_key = 'published_at' if collection["order"] == "time" else 'view_count'
-    from operator import itemgetter
-    sorted_videos = sorted(videos, key=itemgetter('published_at'), reverse=True) if collection["order"] == "time" else videos
+      videos = []
+      for channel in collection["channels"]:
+        for video in channel["videos"]:
+          videos.append(video)
 
-    collection["playlistItems"] = []
-    for video in sorted_videos:
-      playlistitem_resource = {}
-      playlistitem_resource["snippet"] = {}
-      playlistitem_resource["snippet"]["playlistId"] = collection["playlistId"]
-      playlistitem_resource["snippet"]["resourceId"] = {}
-      playlistitem_resource["snippet"]["resourceId"]["kind"] = 'youtube#video'
-      playlistitem_resource["snippet"]["resourceId"]["videoId"] = video["video_id"]
+      # order_key = 'published_at' if collection["order"] == "time" else 'view_count'
+      from operator import itemgetter
+      sorted_videos = sorted(videos, key=itemgetter('published_at'), reverse=True) if collection["order"] == "time" else videos
 
-      playlist_item = playlist_items_insert(client, playlistitem_resource, False, part="snippet")
-      playlistitem_resource["id"] = playlist_item["id"]
-      playlistitem_resource["snippet"]["channelId"] = playlist_item["snippet"]["channelId"]
-      playlistitem_resource["snippet"]["publishedAt"] = playlist_item["snippet"]["publishedAt"]
-      playlistitem_resource["snippet"]["title"] = playlist_item["snippet"]["title"]
-      
-      collection["playlistItems"].append(playlistitem_resource)
+      collection["playlistItems"] = []
+      for video in sorted_videos:
+        playlistitem_resource = {}
+        playlistitem_resource["snippet"] = {}
+        playlistitem_resource["snippet"]["playlistId"] = collection["playlistId"]
+        playlistitem_resource["snippet"]["resourceId"] = {}
+        playlistitem_resource["snippet"]["resourceId"]["kind"] = 'youtube#video'
+        playlistitem_resource["snippet"]["resourceId"]["videoId"] = video["video_id"]
+
+        # playlist_item = playlist_items_insert(client, playlistitem_resource, False, part="snippet")
+        # playlistitem_resource["id"] = playlist_item["id"]
+        # playlistitem_resource["snippet"]["channelId"] = playlist_item["snippet"]["channelId"]
+        # playlistitem_resource["snippet"]["publishedAt"] = playlist_item["snippet"]["publishedAt"]
+        # playlistitem_resource["snippet"]["title"] = playlist_item["snippet"]["title"]
+        
+        collection["playlistItems"].append(playlistitem_resource)
+
+    user_collections['collections'] = collections
+    users_collections.append(user_collections)
 
 
-  return flask.jsonify(collections=collections)
+  return flask.jsonify(users_collections=users_collections)
 
 
 def search_list(client, jsonify=True, **kwargs):
