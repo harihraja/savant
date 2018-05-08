@@ -2,3 +2,5 @@
 *.json
 env/*
 lib
+ptvsd/*
+.DS_Store

@@ -59,31 +59,13 @@ COLLECTION_NEWS = { 'title' : 'Savant News', 'viewCountMin' : '1000000', 'viewDa
 
 
 def get_client():
-  # if 'credentials' not in flask.session or 'token_details' not in flask.session:
-  #   return None  
 
-  # Check to see if the token is expired
-  # expiration_time = dateutil.parser.parse(flask.session['token_details']['expiration_time'])
-  # if datetime.now() > expiration_time:
-  #   return None
-  
-  # Check to see if the token is expired
-  # if 'token_details' in flask.session:
-  #   expiration_time = dateutil.parser.parse(flask.session['token_details']['expiration_time'])
-  #   if datetime.now() > expiration_time:
-  #     refresh_url = 'https://www.googleapis.com/oauth2/v4/token'
-  #     try:
-  #       token = flow.oauth2session.refresh_token(refresh_url)
-  #     except Exception:
-  #       logging.exception('Exception occured during refresh_token.')
-  #     logging.debug('refresh_token was fetched.')
-
-  print "GET_CLIENT::"
+  # print "GET_CLIENT::"
   if 'userinfo' not in flask.session:
     return None    
 
   user_info = flask.session['userinfo']
-  print "GET_CLIENT::USERINFO: ", user_info
+  # print "GET_CLIENT::USERINFO: ", user_info
   
   oauth_session, client_config = google_auth_oauthlib.helpers.session_from_client_secrets_file(
       CLIENT_SECRETS_FILE, scopes=SCOPES)
@@ -93,27 +75,30 @@ def get_client():
       config = client_config['installed']
   else:
     return None              
-  print "GET_CLIENT::CONFIG: ", config
       
   token = models.get_token(user_info['id'])
-  print "GET_CLIENT::TOKEN: ", token  
+  # print "GET_CLIENT::TOKEN:DB ", token  
   oauth_session.token = token
-  
+
+  # refresh if the token is expired
+  expiration_time = datetime.fromtimestamp(token['expires_at']) if 'expires_at' in token else datetime.min
+  if datetime.now() > expiration_time:
+    refresh_url = 'https://www.googleapis.com/oauth2/v4/token'
+    extra = {
+      'client_id': config['client_id'],
+      'client_secret': config['client_secret'],
+    }
+    try:
+      token = oauth_session.refresh_token(refresh_url, **extra)
+    except Exception:
+      logging.exception('Exception occured during refresh_token.')
+      return None
+    logging.debug('refresh_token was fetched.')
+    print "GET_CLIENT::TOKEN:REFRESH ", token  
+
+
   credentials = google_auth_oauthlib.helpers.credentials_from_session(
             oauth_session, config)
-
-  creds = {
-      'token': credentials.token,
-      'refresh_token': credentials.refresh_token,
-      'token_uri': credentials.token_uri,
-      'client_id': credentials.client_id,
-      'client_secret': credentials.client_secret,
-      'scopes': credentials.scopes
-  }            
-  print "GET_CLIENT::CREDENTIALS: ", creds
-
-  # Load the credentials from the session.
-  # credentials = google.oauth2.credentials.Credentials(**flask.session['credentials'])
 
   client = googleapiclient.discovery.build(
       API_SERVICE_NAME, API_VERSION, credentials=credentials)
@@ -162,7 +147,7 @@ def authorize():
 @app.route('/oauth2callback')
 def oauth2callback():
   logging.debug('oauth2callback')
-  print "OAUTH2CALLBACK::"
+  # print "OAUTH2CALLBACK::"
   
   # Specify the state when creating the flow in the callback so that it can
   # verify the authorization server response.
@@ -179,22 +164,7 @@ def oauth2callback():
   except Exception:
     logging.exception('Exception occured during fetch_token.')
   logging.debug('Token was fetched.')
-  print "OAUTH2CALLBACK::TOKEN: ", token
-
-  # Store the credentials in the session.
-  # ACTION ITEM for developers:
-  #     Store user's access and refresh tokens in your data store if
-  #     incorporating this code into your real app.
-  credentials = flow.credentials
-  
-  # flask.session['credentials'] = {
-  #     'token': credentials.token,
-  #     'refresh_token': credentials.refresh_token,
-  #     'token_uri': credentials.token_uri,
-  #     'client_id': credentials.client_id,
-  #     'client_secret': credentials.client_secret,
-  #     'scopes': credentials.scopes
-  # }
+  # print "OAUTH2CALLBACK::TOKEN: ", token
 
   # acquire user info
   try:
@@ -203,15 +173,10 @@ def oauth2callback():
     logging.exception('Exception occured during userinfo.')
   logging.debug('userinfo was fetched.')
   flask.session['userinfo'] = user_info
-  print "OAUTH2CALLBACK::USERINFO: ", user_info
+  # print "OAUTH2CALLBACK::USERINFO: ", user_info
 
   # store refresh token & token uri
   models.store_token(user_info['id'], token)
-
-  # Store expiration time in session
-  flask.session['token_details'] = {
-      'expiration_time': credentials.expiry.isoformat()
-  }
 
   return flask.redirect(flask.url_for('index'))
 
