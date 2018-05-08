@@ -32,6 +32,7 @@ CLIENT_SECRETS_FILE = os.environ['GOOGLE_CLIENT_SECRETS']
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl', 'https://www.googleapis.com/auth/userinfo.email']
 API_SERVICE_NAME = 'youtube'
 API_VERSION = 'v3'
+USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo'
 
 app = flask.Flask(__name__)
 # Note: A secret key is included in the sample so that it works, but if you
@@ -169,7 +170,7 @@ def oauth2callback():
 
   # acquire user info
   try:
-    user_info = flow.authorized_session().get('https://www.googleapis.com/oauth2/v2/userinfo').json()
+    user_info = flow.authorized_session().get(USERINFO_URL).json()
   except Exception:
     logging.exception('Exception occured during userinfo.')
   logging.debug('userinfo was fetched.')
@@ -307,7 +308,7 @@ def makecollections():
     collections = mycollections(client, False)
     for collection in collections:
       # ensure playlist is available
-      playlist = myplaylist(client, collection["title"], True)
+      playlist = myplaylist(client, collection["title"], False, True)
       collection["playlistId"] = playlist["id"]
 
       videos = []
@@ -455,7 +456,7 @@ def query_videos_list(client, jsonify=True, viewCountMin=10000, viewDaysMax=10, 
   return flask.jsonify(videos_list_response)  if jsonify else videos_list_response
 
 
-def myplaylist(client, playlistName, recreate=False): 
+def myplaylist(client, playlistName, recreate=False, empty=False): 
   # get playlist info
   playlists_list_response = playlists_list(client, False,
     part='snippet,contentDetails',
@@ -475,6 +476,28 @@ def myplaylist(client, playlistName, recreate=False):
     playlist_resource["status"] = {}      
     playlist_resource["status"]["privacyStatus"] = "private"
     playlist = playlists_insert(client, playlist_resource, False, part="snippet,status") 
+    return playlist
+
+  # empty the playlist
+  if empty:
+    next_page = None
+    while True:
+      if not next_page:
+        playlistitems_list_response = playlistitems_list(client, False,
+            part='id', playlistId=playlist["id"], maxResults=50)
+      else:
+        # get next page 
+        playlistitems_list_response = playlistitems_list(client, False,
+            part='id', playlistId=playlist["id"], 
+            maxResults=50, pageToken=next_page)
+
+      pl_items = playlistitems_list_response["items"]
+      for pl_item in pl_items:
+        playlist_items_delete(client, False, id=pl_item["id"])
+
+      next_page = playlistitems_list_response["nextPageToken"] if 'nextPageToken' in playlistitems_list_response else None
+      if not next_page:
+        break
 
   return playlist
 
