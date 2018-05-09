@@ -110,7 +110,8 @@ def get_client(userid=None):
 @app.route('/')
 def index():
 
-  client = get_client()
+  user_id = request.args.get('userid') if 'userid' in request.args else None
+  client = get_client(user_id)
   if not client:
     return flask.redirect('authorize')  
 

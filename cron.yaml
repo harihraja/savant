@@ -1,6 +1,12 @@
 cron:
-- description: "Check"
-  url: /index
+- description: "Savant Check"
+  url: /?userid=114175179170633970385
+  schedule: every 168 hours
+  retry_parameters:
+    min_backoff_seconds: 60
+    max_doublings: 3
+- description: "Update Savant Playlists"
+  url: /makecollections
   schedule: every 3 hours synchronized
   retry_parameters:
     min_backoff_seconds: 60
