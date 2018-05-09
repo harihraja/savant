@@ -187,7 +187,8 @@ def oauth2callback():
 @app.route('/myvideos')
 def myvideos():
 
-  client = get_client()
+  user_id = request.args.get('userid') if 'userid' in request.args else None
+  client = get_client(user_id)
   if not client:
     return flask.redirect('authorize')  
 
@@ -198,7 +199,8 @@ def myvideos():
 @app.route('/myplaylists')
 def myplaylists():
 
-  client = get_client()
+  user_id = request.args.get('userid') if 'userid' in request.args else None
+  client = get_client(user_id)
   if not client:
     return flask.redirect('authorize')  
 
@@ -213,7 +215,8 @@ def playlistvideos():
   viewCountMin = request.args.get('viewcountmin') if 'viewcountmin' in request.args else '10000'
   viewDaysMax = request.args.get('viewdaysmax') if 'viewdaysmax' in request.args else '10'
 
-  client = get_client()
+  user_id = request.args.get('userid') if 'userid' in request.args else None
+  client = get_client(user_id)
   if not client:
     return flask.redirect('authorize')  
 
@@ -235,7 +238,8 @@ def playlistitems():
 
   playlist_id = request.args.get('playlistid')
 
-  client = get_client()
+  user_id = request.args.get('userid') if 'userid' in request.args else None
+  client = get_client(user_id)
   if not client:
     return flask.redirect('authorize')  
 
@@ -246,7 +250,8 @@ def playlistitems():
 @app.route('/mychannels')
 def mychannels():
 
-  client = get_client()
+  user_id = request.args.get('userid') if 'userid' in request.args else None
+  client = get_client(user_id)
   if not client:
     return flask.redirect('authorize')  
 
@@ -257,7 +262,8 @@ def mychannels():
 @app.route('/allchannels')
 def allchannels():
 
-  client = get_client()
+  user_id = request.args.get('userid') if 'userid' in request.args else None
+  client = get_client(user_id)
   if not client:
     return flask.redirect('authorize')  
 
@@ -283,7 +289,8 @@ def allchannels():
 @app.route('/mysubscriptions')
 def mysubscriptions():
 
-  client = get_client()
+  user_id = request.args.get('userid') if 'userid' in request.args else None
+  client = get_client(user_id)
   if not client:
     return flask.redirect('authorize')  
 
