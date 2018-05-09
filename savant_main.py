@@ -329,7 +329,12 @@ def makecollections():
         playlistitem_resource["snippet"]["resourceId"]["kind"] = 'youtube#video'
         playlistitem_resource["snippet"]["resourceId"]["videoId"] = video["video_id"]
 
-        playlist_item = playlist_items_insert(client, playlistitem_resource, False, part="snippet")
+        try:
+          playlist_item = playlist_items_insert(client, playlistitem_resource, False, part="snippet")
+        except Exception:
+          logging.exception('Exception occured during playlist_items_insert.')
+          continue      
+
         playlistitem_resource["id"] = playlist_item["id"]
         playlistitem_resource["snippet"]["channelId"] = playlist_item["snippet"]["channelId"]
         playlistitem_resource["snippet"]["publishedAt"] = playlist_item["snippet"]["publishedAt"]
@@ -493,7 +498,11 @@ def myplaylist(client, playlistName, recreate=False, empty=False):
 
       pl_items = playlistitems_list_response["items"]
       for pl_item in pl_items:
-        playlist_items_delete(client, False, id=pl_item["id"])
+        try:
+          playlist_items_delete(client, False, id=pl_item["id"])
+        except Exception:
+          logging.exception('Exception occured during playlist_items_delete.')
+          continue        
 
       next_page = playlistitems_list_response["nextPageToken"] if 'nextPageToken' in playlistitems_list_response else None
       if not next_page:
