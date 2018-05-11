@@ -50,11 +50,11 @@ TOPICS_MUSIC = ['https://en.wikipedia.org/wiki/Music']
 TOPICS_NEWS = ['https://en.wikipedia.org/wiki/Society', 'https://en.wikipedia.org/wiki/Politics']
 
 
-COLLECTION_TALK_SHOW = { 'title' : 'Savant Talk Show', 'viewCountMin' : '1000000', 'viewDaysMax' : '7', 'topics' : TOPICS_TALK_SHOW, 
+COLLECTION_TALK_SHOW = { 'title' : 'Savant Talk Show', 'viewCountMin' : '1000000', 'viewDaysMax' : '5', 'topics' : TOPICS_TALK_SHOW, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
-COLLECTION_SPORTS = { 'title' : 'Savant Sports', 'viewCountMin' : '100000', 'viewDaysMax' : '5', 'topics' : TOPICS_SPORTS, 
+COLLECTION_SPORTS = { 'title' : 'Savant Sports', 'viewCountMin' : '100000', 'viewDaysMax' : '3', 'topics' : TOPICS_SPORTS, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
-COLLECTION_MUSIC = { 'title' : 'Savant Music', 'viewCountMin' : '1000000', 'viewDaysMax' : '120', 'topics' : TOPICS_MUSIC, 
+COLLECTION_MUSIC = { 'title' : 'Savant Music', 'viewCountMin' : '10000000', 'viewDaysMax' : '180', 'topics' : TOPICS_MUSIC, 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'views' }
 COLLECTION_TRAILERS = { 'title' : 'Savant Trailers', 'viewCountMin' : '100000', 'viewDaysMax' : '90', 'topics' : '', 
   'channels' : [], 'playlistId' : '', 'playlistItems' : [], 'order' : 'time' }
