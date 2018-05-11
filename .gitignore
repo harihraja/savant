@@ -4,3 +4,6 @@ env/*
 lib
 ptvsd/*
 .DS_Store
+static/LICENSE
+static/README.md
+pydev_startup.py

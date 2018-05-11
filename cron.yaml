@@ -1,6 +1,6 @@
 cron:
 - description: "Savant Check"
-  url: /?userid=114175179170633970385
+  url: /start?userid=114175179170633970385
   schedule: every 168 hours
   retry_parameters:
     min_backoff_seconds: 60

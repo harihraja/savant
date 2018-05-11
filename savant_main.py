@@ -4,7 +4,8 @@ import os
 
 import flask
 import json
-from flask import request
+from flask import request, render_template
+# from flask_bootstrap import Bootstrap
 
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
@@ -35,6 +36,8 @@ API_VERSION = 'v3'
 USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo'
 
 app = flask.Flask(__name__)
+# Bootstrap(app)
+
 # Note: A secret key is included in the sample so that it works, but if you
 # use this code in your application please replace this with a truly secret
 # key. See http://flask.pocoo.org/docs/0.12/quickstart/#sessions.
@@ -110,12 +113,18 @@ def get_client(userid=None):
 @app.route('/')
 def index():
 
+  return render_template('index.html')
+
+@app.route('/start')
+def start():
+
   user_id = request.args.get('userid') if 'userid' in request.args else None
-  client = get_client(user_id)
-  if not client:
+  if not user_id and 'userinfo' not in flask.session:
     return flask.redirect('authorize')  
 
-  return mycollections(client)
+  user_id = user_id or flask.session['userinfo']['id']
+  print "START::USER_ID: ", user_id
+  return flask.redirect(flask.url_for('makecollections', userid=user_id))
 
 @app.route('/login')
 def login():
@@ -135,7 +144,7 @@ def authorize():
       # This parameter enables offline access which gives your application
       # both an access and refresh token.
       access_type='offline',
-      prompt='consent',
+      # prompt='consent',
       # This parameter enables incremental auth.
       include_granted_scopes='true')
 
@@ -181,7 +190,7 @@ def oauth2callback():
   # store refresh token & token uri
   models.store_token(user_info['id'], token)
 
-  return flask.redirect(flask.url_for('index'))
+  return flask.redirect(flask.url_for('start', userid=user_info['id']))
 
 
 @app.route('/myvideos')
@@ -301,8 +310,10 @@ def mysubscriptions():
 @app.route('/makecollections')
 def makecollections():
 
+  uid = request.args.get('userid') if 'userid' in request.args else None
+
   users_collections = []
-  user_ids = models.get_user_ids()
+  user_ids = models.get_user_ids() if not uid else [uid]
   print "MAKECOLLECTIONS::USER_IDS:", user_ids
   for user_id in user_ids:
     user_collections = {}
@@ -353,8 +364,20 @@ def makecollections():
     user_collections['collections'] = collections
     users_collections.append(user_collections)
 
+  # redirect to youtube if we were redirected to makecollections after login
+  if uid:
+    client = get_client(uid)
+
+    channels_list_response = channels_list(client, False, part='id',mine=True, maxResults=50)
+    channel = next((c for c in channels_list_response["items"] if "id" in c), None)   
+    channel_id = channel['id'] if channel else None
+
+    youtube_url = 'https://www.youtube.com'
+    youtube_url = youtube_url + '/channel/' + channel_id + '/playlists' if channel_id else youtube_url
+    return flask.redirect(youtube_url)
 
   return flask.jsonify(users_collections=users_collections)
+
 
 
 def search_list(client, jsonify=True, **kwargs):
